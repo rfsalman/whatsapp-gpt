@@ -11,6 +11,7 @@ import src.chat.service as chat_service
 import src.openai_module.service as openai_service
 import src.user.service as user_service
 from src.openai_module.schemas import ChatCompletionMessageSchema, ChatCompletionOptionsSchema, ChatCompletionResponseSchema
+from src.system_profile.models import SystemProfileModel
 
 
 async def handle_whatsapp_event(data: WaWebhookPayload):
@@ -49,89 +50,89 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     if message.message_type != "text":
         continue
 
-    user = await user_service.get_user({"whatsapp_id": contact.wa_id})
+    user = await user_service.get_or_create_user(
+      UserModel(
+        whatsapp_id=contact.wa_id,
+        name=contact.profile.name,
+        phone_number=contact.wa_id
+      )
+    )
+    
+    user_chat = None
 
-    if not user:
-        userData = UserModel(
-            whatsapp_id=contact.wa_id,
-            name=contact.profile.name,
-            phone_number=contact.wa_id
-        )
-
-        user = await user_service.create_user(userData)
-
-    finish_reason = ""
-    chatCompletionTextResult = ""
-
-    while finish_reason in ["", "length"]:
-      messages = [
-        ChatCompletionMessageSchema(
-          role="system",
-          content="""
-            You are Madeline, everyone's helpful assistant, 
-            DO NOT reveal that you are OpenAI or any other AI model
-          """,
-          name="Madeline"
-        ),
-        ChatCompletionMessageSchema(
-          role="user",
-          content=message.text.body,
-          name=user.name.split(" ")[0]
-        )
-      ]
-
-      if finish_reason == "length":
-        messages.append(
-          ChatCompletionMessageSchema(
-            role="assistant",
-            content=chatCompletionTextResult,
-            name=metadata.display_phone_number
+    try:
+      user_chat = await chat_service.get_or_create_chat(
+        ChatModel(
+          user=UserModel(
+            whatsapp_id=user.whatsapp_id
+          ),
+          system_profile=SystemProfileModel(
+            whatsapp_id=metadata.phone_number_id
           ),
         )
-        messages.append(ChatCompletionMessageSchema(
-          role="user",
-          content="continue",
-          name=user.name.split(" ")[0]
-        ))
-
-      chatCompletion: ChatCompletionResponseSchema = openai_service.create_chat_completion(
-        messages=messages,
-        options=ChatCompletionOptionsSchema()
+      );
+    except Exception as e:
+      print("ERROR", e)
+    
+    user_name = user.name.split(" ")[0]
+    
+    chat_history = [] if not user_chat else user_chat.messages
+    formatted_chat_history = [
+      ChatCompletionMessageSchema(
+        role=chat_message.role,
+        content=chat_message.content,
+        name=user_name
+      ) for chat_message in chat_history
+    ]
+    formatted_chat_history.append(
+      ChatCompletionMessageSchema(
+        role="user",
+        content=message.text.body,
+        name=user_name
       )
+    )
 
-      finish_reason = chatCompletion.choices[0].finish_reason
-      chatCompletionTextResult = chatCompletionTextResult + \
-        chatCompletion.choices[0].message.content
+    chat_completion: ChatCompletionResponseSchema = openai_service.create_full_chat_completion(
+      message_history=formatted_chat_history,
+      user=user,
+      options=ChatCompletionOptionsSchema()
+    )
 
-      whatsappResponse = send_whatsapp_message(
-        contact.wa_id, chatCompletionTextResult)
+    chat_text_result = "The system is currently unable to generate response"
 
-      # TODO: Implement error handling if call to whatsapp failed
-      if len(whatsappResponse.messages) == 0:
-        continue
+    if chat_completion:
+      chat_text_result = chat_completion.choices[0].message.content
+      
 
-      chatCriteria = {
-        "system_profile.whatsapp_id": metadata.phone_number_id,
-        "user.whatsapp_id": contact.wa_id
-      }
+    whatsapp_response = send_whatsapp_message(
+      contact.wa_id, chat_text_result)
 
-      chatMessages = [
-        MessageModel(
-          role="user",
-          content=message.text.body,
-          wa_message_id=message.id,
-          created_at=message.timestamp,
-        ),
-        MessageModel(
-          role="assistant",
-          content=chatCompletionTextResult,
-          wa_message_id=whatsappResponse.messages[0].id,
-          created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ),
-      ]
+    # TODO: Implement error handling if call to whatsapp failed
+    if len(whatsapp_response.messages) == 0:
+      continue
 
-      updatedChat = await chat_service.createChatMessage(chatCriteria, chatMessages)
-      updatedChats.append(updatedChat)
+    chat_criteria = {
+      "system_profile.whatsapp_id": metadata.phone_number_id,
+      "user.whatsapp_id": contact.wa_id
+    }
+
+    chat_messages = [
+      MessageModel(
+        role="user",
+        content=message.text.body,
+        wa_message_id=message.id,
+        created_at=message.timestamp,
+      ),
+      MessageModel(
+        role="assistant",
+        content=chat_text_result,
+        wa_message_id=whatsapp_response.messages[0].id,
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      ),
+    ]
+
+    updatedChat = await chat_service.upsert_chat_message(chat_criteria, chat_messages)
+    updatedChats.append(updatedChat)
 
   return updatedChats
 

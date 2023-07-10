@@ -24,11 +24,11 @@ async def handle_verify_webhook_endpoint(
 
 @router.post("/")
 async def handle_whatsapp_event(payload: Annotated[dict, Body()], x_hub_signature_256: Annotated[str, Header()] = None):
-  if not x_hub_signature_256:
-    raise HTTPException(
-      status.HTTP_403_FORBIDDEN,
-      detail="Forbidden resource."
-    )
+  # if not x_hub_signature_256:
+  #   raise HTTPException(
+  #     status.HTTP_403_FORBIDDEN,
+  #     detail="Forbidden resource."
+  #   )
 
   hex_digests = validate_whatsapp_webhook_payload(payload)
 

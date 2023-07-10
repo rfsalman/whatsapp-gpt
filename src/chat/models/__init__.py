@@ -6,7 +6,7 @@ from src.system_profile.models import SystemProfileModel
 
 
 class MessageModel(BaseModel):
-  _id: PyObjectId = Field(default_factory=PyObjectId)
+  id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
   wa_message_id: str = Field(...)
   content: str = Field(...)
   role: str = Field(...)
@@ -24,14 +24,15 @@ class MessageModel(BaseModel):
         "role": "assistant",
         "created_at": "2023-06-12"
       }
-    }
+    }, 
+
 
 
 class ChatModel(BaseModel):
   _id: PyObjectId = Field(default_factory=PyObjectId)
   system_profile: SystemProfileModel = Field(...)
   user: UserModel = Field(...)
-  messages: MessageModel = Field(default=[])
+  messages: list[MessageModel] = Field(default=[])
 
   class Config:
     allow_population_by_field_name = True

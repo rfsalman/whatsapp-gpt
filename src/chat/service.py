@@ -4,22 +4,41 @@ from .models import ChatModel, MessageModel
 from src.models import PyObjectId
 
 
-async def getChat(chatCriteria: dict) -> ChatModel:
-  if chatCriteria["_id"]:
-    chatCriteria["_id"] = PyObjectId(chatCriteria["_id"])
+async def get_or_create_chat(chat_dto: ChatModel) -> ChatModel:
+  chat_data = chat_dto.dict()
 
-  chat = await db["chats"].find_one(chatCriteria)
+  chat = await get_chat(chat_data)
 
-  return ChatModel(**chat)
+  if not chat:
+    chat = await upsert_chat_message(chat_dto.dict(), [])
+
+  return chat
 
 
-async def createChatMessage(chatData: dict, messages: list[MessageModel]) -> ChatModel:
+async def get_chat(chat_data: dict) -> ChatModel | None:
+  if chat_data.get("_id", None):
+    chat_data["_id"] = PyObjectId(chat_data["_id"])
+
+  chat = await db["chats"].find_one(chat_data)
+  
+  if chat:
+    return ChatModel(**chat)
+
+  return  None
+
+async def upsert_chat_message(chat_data: dict, messages: list[MessageModel]) -> ChatModel | None:
   updated = await db["chats"].update_one(
-    chatData,
+    chat_data,
     {
       "$push": {
         "messages": {
-          "$each": [message.dict() for message in messages]
+          "$each": [{
+            "_id": message.id,
+            "wa_message_id": message.wa_message_id,
+            "content": message.content,
+            "role": message.role,
+            "created_at": message.created_at,
+          } for message in messages]
         }
       }
     },
@@ -28,4 +47,7 @@ async def createChatMessage(chatData: dict, messages: list[MessageModel]) -> Cha
 
   chat = await db["chats"].find_one({"_id": updated.upserted_id})
 
-  return chat
+  if not chat:
+    return None
+
+  return ChatModel(**chat)
