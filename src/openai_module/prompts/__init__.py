@@ -16,3 +16,11 @@ system_message_prompt="""
   Don't ask too many details and ask one question at a time, If the answer doesn't make sense
   Try asking again and suggests a proper format.
 """
+
+chat_parser_prompt_template = """Extract the User's information based on the chat history between User and AI.
+You should only fill in fields which informations can be infered from the chat history.
+
+{format_instructions}
+
+{chat_history}
+"""

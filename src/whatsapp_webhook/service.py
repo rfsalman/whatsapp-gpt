@@ -2,6 +2,7 @@ import asyncio
 from itertools import zip_longest
 import requests
 from datetime import datetime
+
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
 from src.config import config
@@ -61,19 +62,13 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     user_chat = None
 
     try:
-      user_chat = await chat_service.get_or_create_chat(
-        ChatModel(
-          user=UserModel(
-            whatsapp_id=user.whatsapp_id
-          ),
-          system_profile=SystemProfileModel(
-            whatsapp_id=metadata.phone_number_id
-          ),
-        )
-      );
+      user_chat = await chat_service.get_or_create_chat({
+        "user.whatsapp_id": user.whatsapp_id,
+        "system_profile.whatsapp_id": metadata.phone_number_id
+      });
     except Exception as e:
-      print("ERROR", e)
-    
+      print("ERROR GET OR CREATE", e)
+
     user_name = user.name.split(" ")[0]
     
     chat_history = [] if not user_chat else user_chat.messages
@@ -101,7 +96,7 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     chat_text_result = "The system is currently unable to generate response"
 
     if chat_completion:
-      chat_text_result = chat_completion.choices[0].message.content
+      chat_text_result = chat_completion
       
 
     whatsapp_response = send_whatsapp_message(
@@ -135,7 +130,6 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     updatedChats.append(updatedChat)
 
   return updatedChats
-
 
 def send_whatsapp_message(to: str, content: str) -> WaMessageResponseSchema:
   url = "{}/messages".format(config.FACEBOOK_API_URL)

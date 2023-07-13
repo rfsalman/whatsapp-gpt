@@ -3,24 +3,32 @@ from src.databases.mongo import db
 from .models import ChatModel, MessageModel
 from src.models import PyObjectId
 
-
-async def get_or_create_chat(chat_dto: ChatModel) -> ChatModel:
-  chat_data = chat_dto.dict()
-
-  chat = await get_chat(chat_data)
+async def get_or_create_chat(chat_criteria: dict) -> ChatModel:
+  chat = await get_chat(chat_criteria)
 
   if not chat:
-    chat = await upsert_chat_message(chat_dto.dict(), [])
-
+    chat = await create_chat(ChatModel(**chat_criteria))
+    
   return chat
 
+
+async def create_chat(chat_dto: ChatModel) -> ChatModel:
+  try:
+    inserted = await db["chats"].insert_one(chat_dto.dict())
+    chat = await get_chat({"_id": inserted.inserted_id})
+
+    return ChatModel(**chat)
+  except Exception as e:
+    print("CREATE CHAT ERROR", e)
+    
+    raise e
 
 async def get_chat(chat_data: dict) -> ChatModel | None:
   if chat_data.get("_id", None):
     chat_data["_id"] = PyObjectId(chat_data["_id"])
 
   chat = await db["chats"].find_one(chat_data)
-  
+
   if chat:
     return ChatModel(**chat)
 
