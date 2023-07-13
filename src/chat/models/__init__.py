@@ -29,7 +29,7 @@ class MessageModel(BaseModel):
 
 
 class ChatModel(BaseModel):
-  _id: PyObjectId = Field(default_factory=PyObjectId)
+  id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
   system_profile: SystemProfileModel = Field(...)
   user: UserModel = Field(...)
   messages: list[MessageModel] = Field(default=[])

@@ -4,8 +4,8 @@ from src.models import PyObjectId
 
 class UserBioModel(BaseModel):
   full_name: str = Field(default=None)
-  date_of_birth: str = Field(default=None)
-  gender: str = Field(default=None)
+  date_of_birth: str = Field(default=None, description="Date of birth in YYYY-MM-DD format")
+  gender: str = Field(default=None, description="User's gender: (Male|Female)")
   interests: list[str] = Field(default=[], description="List of user's interest, can be deducted from chat topics")
   relationship_goal: str = Field(default=None, description="Could be one of: casual, short-term, long-term")
   
