@@ -1,4 +1,4 @@
-web: uvicorn src.main:app
+web: python src/main.py
 
 # Uncomment this `release` process if you are using a database, so that Django's model
 
