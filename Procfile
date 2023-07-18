@@ -1,4 +1,4 @@
-web: python src/main.py
+web: uvicorn src.main:app --host 0.0.0.0 --port ${PORT}
 
 # Uncomment this `release` process if you are using a database, so that Django's model
 
