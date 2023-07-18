@@ -11,6 +11,8 @@ class Config(BaseSettings):
   WHATSAPP_ACCESS_TOKEN: str
   ADMIN_JWT_SECRET: str
   JWT_ALGORITHM: str
+  ENV: str
+  PORT: int
   
   class Config:
     env_file = "./src/.env"
