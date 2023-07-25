@@ -12,7 +12,7 @@ from src.huggingface_module.hf import hf
 
 @asynccontextmanager
 async def lifespan(_application: FastAPI) -> AsyncGenerator:
-  hf.init()
+  # hf.init()
   vector_db.init()
   
   yield
