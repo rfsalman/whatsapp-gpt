@@ -13,6 +13,8 @@ class Config(BaseSettings):
   JWT_ALGORITHM: str
   ENV: str
   PORT: int
+  WEAVIATE_URL: str
+  WEAVIATE_API_KEY: str
   
   class Config:
     env_file = "./src/.env"
