@@ -6,7 +6,6 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import (
   HumanMessage,
-  SystemMessage
 )
 from langchain.prompts import (
   SystemMessagePromptTemplate, 
@@ -21,64 +20,36 @@ from langchain.schema import (
 from pydantic import BaseModel
 
 from src.config import config
-from src.user.models import UserBioModel, UserModel
+from src.user.models import UserModel
 from .schemas import ChatCompletionMessageSchema, ChatCompletionOptionsSchema, ChatCompletionResponseSchema
 import src.openai_module.prompts as prompts
 
 openai.api_key = config.OPENAI_API_KEY
 
 def create_full_chat_completion(
-  message_history: list[ChatCompletionMessageSchema],
-  user: UserModel, 
-  options: ChatCompletionOptionsSchema
+  message_history: list[AIMessage | HumanMessage],
+  prompt: str,
+  additional_data: dict = {}
 ) -> str:
   try:
-    chat_openai = ChatOpenAI(temperature=0.3)
+    chat_openai = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.3)
 
     system_message_prompt = SystemMessagePromptTemplate.from_template(
-      prompts.system_message_prompt
+      prompt
     )
 
     messages = [
       system_message_prompt,
-      *(
-        create_chat_message(message) 
-        for message in message_history 
-      ),
+      *message_history
     ]
 
     chat_prompt_template = ChatPromptTemplate.from_messages(messages)
 
-    bio_information = user.bio_information.dict() if user.bio_information else {}; 
-    
-    if not bio_information:
-      bio_information = {}
-    
-    chat_prompt = chat_prompt_template.format_messages(
-      full_name=bio_information.get("full_name", ""),
-      date_of_birth=bio_information.get("date_of_birth", ""),
-      gender=bio_information.get("gender", ""),
-      interests=bio_information.get("interests", ""),
-      relationship_goal=bio_information.get("relationship_goal", ""),
-    )
+    chat_prompt = chat_prompt_template.format_messages(**additional_data)
 
     chat_result = chat_openai.predict_messages(chat_prompt)
 
-    new_chat_history = [*(chat_prompt), chat_result]
-
-    parsed_bio = None
-
-    if len(new_chat_history) >= 4:
-      pass
-      # parsed_bio = parse_chat_history(
-      #   chat_history=new_chat_history,
-      #   pydantic_model=UserBioModel,
-      #   system_prompt_template=prompts.chat_parser_prompt_template,
-      # ) 
-
-    print("parsed_bio", parsed_bio)
-
-    return chat_result.content
+    return chat_result
   except Exception as e:
     print("Error: ", e)
     return ""
