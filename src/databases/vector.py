@@ -16,7 +16,8 @@ class VectorDB():
       url=config.WEAVIATE_URL,
       auth_client_secret=weaviate.auth.AuthApiKey(config.WEAVIATE_API_KEY),
       additional_headers={
-        "X-OpenAI-API-Key": config.OPENAI_API_KEY
+        "X-OpenAI-API-Key": config.OPENAI_API_KEY,
+        "X-Cohere-Api-Key": config.COHERE_API_KEY
       }
     )
 

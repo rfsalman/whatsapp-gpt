@@ -8,7 +8,6 @@ from src.whatsapp_webhook.router import router as wa_webhook_router
 
 from src.config import config
 from src.databases.vector import vector_db
-from src.huggingface_module.hf import hf
 
 @asynccontextmanager
 async def lifespan(_application: FastAPI) -> AsyncGenerator:

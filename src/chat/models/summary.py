@@ -11,7 +11,7 @@ ChatSummaryModel = {
     },
     {
       "name": "batch_id",
-      "dataType": "text",
+      "dataType": ["text"],
       "moduleConfig": {
         "text2vec-cohere": {
           "skip": True
@@ -20,7 +20,7 @@ ChatSummaryModel = {
     },
     {
       "name": "chat_id",
-      "dataType": "text",
+      "dataType": ["text"],
       "moduleConfig": {
         "text2vec-cohere": {
           "skip": True
@@ -29,7 +29,7 @@ ChatSummaryModel = {
     },
     {
       "name": "timestamp",
-      "dataType": "date",
+      "dataType": ["date"],
       "moduleConfig": {
         "text2vec-cohere": {
           "skip": True

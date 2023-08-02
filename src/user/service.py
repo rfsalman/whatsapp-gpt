@@ -1,6 +1,7 @@
 from src.models import PyObjectId
 from src.user.models import UserModel
 from src.databases.mongo import db
+from src.utils.dict import flatten_dict
 
 async def get_user(criteria: dict) -> UserModel | None:
   if "_id" in criteria:
@@ -14,7 +15,7 @@ async def get_user(criteria: dict) -> UserModel | None:
   return UserModel(**user)
 
 
-async def create_user(user_dto: UserModel) -> UserModel:
+async def create_user(user_dto: dict) -> UserModel:
   userData = user_dto.dict()
 
   created = await db["users"].insert_one(userData)
@@ -23,9 +24,9 @@ async def create_user(user_dto: UserModel) -> UserModel:
   return UserModel(**newUser)
 
 async def get_or_create_user(user_dto: UserModel) -> UserModel:
-  user_data = user_dto.dict()
+  user_criteria = flatten_dict(user_dto)
 
-  user = await get_user(user_data)
+  user = await get_user(user_criteria)
 
   if not user:
     user = await create_user(user_dto)

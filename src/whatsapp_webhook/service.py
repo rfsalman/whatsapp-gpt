@@ -3,15 +3,15 @@ from itertools import zip_longest
 import requests
 from datetime import datetime
 from langchain.schema import (
-  AIMessage
+  AIMessage,
+  BaseMessage
 )
 
+import src.chat.service as chat_service
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
 from src.config import config
 from src.chat.models import ChatModel, MessageModel
-import src.chat.service as chat_service
-from src.openai_module.schemas import ChatCompletionResponseSchema
 
 
 async def handle_whatsapp_event(data: WaWebhookPayload):
@@ -50,15 +50,16 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
       continue
 
     chat_completion: AIMessage = None
+    chat_history: list[BaseMessage] = []
 
     try:
-      chat_completion = await chat_service.handle_chat_message_pipeline(
+      chat_completion, chat_history = await chat_service.handle_chat_message_pipeline(
         message=message,
         contact=contact,
         metadata=metadata
       )
     except Exception as e:
-      print("Error in pipeline", e)    
+      print("Error in message pipeline", e)    
 
     chat_text_result = "The system is currently unable to generate response"
 
@@ -94,6 +95,11 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
 
     updatedChat = await chat_service.upsert_chat_message(chat_criteria, chat_messages)
     updatedChats.append(updatedChat)
+
+    history_length = len([*chat_history, *chat_messages])
+
+    if history_length >= 10:
+      _ = await chat_service.create_latest_chat_summary(updatedChat.id, history_length)
 
   return updatedChats
 
