@@ -1,8 +1,12 @@
 import weaviate
+from weaviate import exceptions
+from fastapi import status
 
 from src.config import config
 from src.helpers.topics import MessageTopics
 from src.chat.models.topics import TopicModel
+from src.chat.models.summary import ChatSummaryModel
+
 
 class VectorDB():
   client: weaviate.Client = None
@@ -26,6 +30,13 @@ class VectorDB():
       self.client.schema.create_class(TopicModel)
       self.populate_intent()
 
+    try:
+      _ = self.client.schema.get(ChatSummaryModel["class"])
+    except exceptions.UnexpectedStatusCodeException as e:
+      if e.status_code == status.HTTP_404_NOT_FOUND:
+        self.client.schema.create_class(ChatSummaryModel)
+      
+    
   def populate_intent(self):
     with self.client.batch(
       batch_size=20,
