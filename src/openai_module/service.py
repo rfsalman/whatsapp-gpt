@@ -6,7 +6,6 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import (
   HumanMessage,
-  SystemMessage
 )
 from langchain.prompts import (
   SystemMessagePromptTemplate, 
@@ -21,64 +20,38 @@ from langchain.schema import (
 from pydantic import BaseModel
 
 from src.config import config
-from src.user.models import UserBioModel, UserModel
 from .schemas import ChatCompletionMessageSchema, ChatCompletionOptionsSchema, ChatCompletionResponseSchema
-import src.openai_module.prompts as prompts
 
 openai.api_key = config.OPENAI_API_KEY
 
+T = TypeVar("T", bound=BaseModel)
+
 def create_full_chat_completion(
-  message_history: list[ChatCompletionMessageSchema],
-  user: UserModel, 
-  options: ChatCompletionOptionsSchema
+  message_history: list[AIMessage | HumanMessage],
+  prompt: str,
+  additional_data: dict = {}
 ) -> str:
   try:
-    chat_openai = ChatOpenAI(temperature=0.3)
+    chat_openai = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
     system_message_prompt = SystemMessagePromptTemplate.from_template(
-      prompts.system_message_prompt
+      prompt
     )
 
     messages = [
       system_message_prompt,
-      *(
-        create_chat_message(message) 
-        for message in message_history 
-      ),
+      *message_history
     ]
 
     chat_prompt_template = ChatPromptTemplate.from_messages(messages)
 
-    bio_information = user.bio_information.dict() if user.bio_information else {}; 
-    
-    if not bio_information:
-      bio_information = {}
-    
-    chat_prompt = chat_prompt_template.format_messages(
-      full_name=bio_information.get("full_name", ""),
-      date_of_birth=bio_information.get("date_of_birth", ""),
-      gender=bio_information.get("gender", ""),
-      interests=bio_information.get("interests", ""),
-      relationship_goal=bio_information.get("relationship_goal", ""),
-    )
+    chat_prompt = chat_prompt_template.format_messages(**additional_data)
+
+    print("System Message", chat_prompt[0].content)
 
     chat_result = chat_openai.predict_messages(chat_prompt)
 
-    new_chat_history = [*(chat_prompt), chat_result]
-
-    parsed_bio = None
-
-    if len(new_chat_history) >= 4:
-      pass
-      # parsed_bio = parse_chat_history(
-      #   chat_history=new_chat_history,
-      #   pydantic_model=UserBioModel,
-      #   system_prompt_template=prompts.chat_parser_prompt_template,
-      # ) 
-
-    print("parsed_bio", parsed_bio)
-
-    return chat_result.content
+    return chat_result
   except Exception as e:
     print("Error: ", e)
     return ""
@@ -103,8 +76,6 @@ def create_chat_completion(messages: list[ChatCompletionMessageSchema], options:
   )
 
   return chat_completion
-
-T = TypeVar("T", bound=BaseModel)
 
 def parse_chat_history(
   chat_history: list[AIMessage | HumanMessage], 
@@ -147,78 +118,32 @@ def chat_stringify(chat_history: list[AIMessage | HumanMessage]) -> str:
 
   return chat_history_string
 
-# def create_full_chat_completion(
-#   message_history: list[ChatCompletionMessageSchema],
-#   user: UserModel, 
-#   options: ChatCompletionOptionsSchema
-# ) -> ChatCompletionMessageSchema:
-#   finish_reason = ""
-#   chat_completion_text_result = ""
-  
-#   user_bio = user.bio_information.dict() if user.bio_information else {}
+def generate_parsed(
+  pydantic_object: Type[T], 
+  prompt_template: str, 
+  additional_data: dict) -> T:
+  try:
+    llm = OpenAI(openai_api_key=config.OPENAI_API_KEY, temperature=0)
+    output_parser = PydanticOutputParser(
+      pydantic_object=pydantic_object, 
+    )
 
-#   system_message = ChatCompletionMessageSchema(
-#     role="system",
-#     content=f"""
-#       Your name is Serene, An AI Assistant that help me find my ideal partner, you will ask questions about my preference and criteria,
-#       With your extensive knowledge of compatibility and your warmth, empathetic nature, Serene is passionate for creating meaningful connections.
+    prompt = PromptTemplate.from_template(prompt_template)
 
-#       This is what you know about me:
-#       1. Full Name: {user_bio.get("full_name", "")}
-#       2. Date Of Birth: {user_bio.get("date_of_birth", "")}
-#       3. Gender: {user_bio.get("gender", "")}
-#       4. Interests: {user_bio.get("interests", [])}
-#       5. Relationship Goal: {user_bio.get("relationship+goal", "")}
+    llm_result = llm.predict(
+      prompt.format(
+      **{
+        **additional_data,
+        "format_instructions": output_parser.get_format_instructions()
+      })
+    )
 
-#       You will ask questions to fill the fields with empty value, 
-#       skip questions for already filled in value.
-      
-#       Don't ask too many details and ask one question at a time, If the answer doesn't make sense
-#       Try asking again and suggests a proper format.
-#     """,
-#     name="Serene"    
-#   )
+    print("OpenAI Summary Result", llm_result)
 
-#   chat_completion = None
+    parsed_result = output_parser.parse(llm_result)
 
-#   try:
-#     while finish_reason in ["", "length"]:
-#       messages = [
-#         system_message,
-#         *message_history,
-#       ]
-
-#       if finish_reason == "length":
-#         continue_message = ChatCompletionMessageSchema(
-#           role="user",
-#           content="continue",
-#           name=user.name.split(" ")[0]
-#         )
-
-#         messages.append(continue_message)
-
-#       chat_completion: ChatCompletionResponseSchema = openai.ChatCompletion.create(
-#         messages=[message.dict() for message in messages],
-#         **options.dict()
-#       )
-
-#       finish_reason = chat_completion.choices[0].finish_reason
-#       chat_completion_text_result = chat_completion_text_result + chat_completion.choices[0].message.content
+    return parsed_result
+  except Exception as e:
+    print("Error at cohere_module.generate_parsed", e)
     
-
-#     if chat_completion:
-#       chat_completion.choices[0].message.content = chat_completion_text_result
-    
-#     return chat_completion
-  
-#   except RateLimitError as e:
-#     print("e", e)
-    
-#     return None
-#   except Exception as e:
-#     print("e", e)
-    
-#     return None
-#   finally:
-#     return chat_completion
-    
+    raise e

@@ -2,17 +2,16 @@ import asyncio
 from itertools import zip_longest
 import requests
 from datetime import datetime
+from langchain.schema import (
+  AIMessage,
+  BaseMessage
+)
 
+import src.chat.service as chat_service
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
 from src.config import config
-from src.user.models import UserModel
 from src.chat.models import ChatModel, MessageModel
-import src.chat.service as chat_service
-import src.openai_module.service as openai_service
-import src.user.service as user_service
-from src.openai_module.schemas import ChatCompletionMessageSchema, ChatCompletionOptionsSchema, ChatCompletionResponseSchema
-from src.system_profile.models import SystemProfileModel
 
 
 async def handle_whatsapp_event(data: WaWebhookPayload):
@@ -30,7 +29,6 @@ async def handle_whatsapp_event(data: WaWebhookPayload):
 
   return logs
 
-
 async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
   if len(change.value.contacts) == 0:
     return None
@@ -45,59 +43,28 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
   for _, (message, contact) in enumerate(zip_longest(change.value.messages, change.value.contacts)):
     # ? Uneven lengths of message/contact
     if not message or not contact:
-        break
+      break
 
     # ? Only handle text messages
     if message.message_type != "text":
-        continue
+      continue
 
-    user = await user_service.get_or_create_user(
-      UserModel(
-        whatsapp_id=contact.wa_id,
-        name=contact.profile.name,
-        phone_number=contact.wa_id
-      )
-    )
-    
-    user_chat = None
+    chat_completion: AIMessage = None
+    chat_history: list[BaseMessage] = []
 
     try:
-      user_chat = await chat_service.get_or_create_chat({
-        "user.whatsapp_id": user.whatsapp_id,
-        "system_profile.whatsapp_id": metadata.phone_number_id
-      });
-    except Exception as e:
-      print("ERROR GET OR CREATE", e)
-
-    user_name = user.name.split(" ")[0]
-    
-    chat_history = [] if not user_chat else user_chat.messages
-    formatted_chat_history = [
-      ChatCompletionMessageSchema(
-        role=chat_message.role,
-        content=chat_message.content,
-        name=user_name
-      ) for chat_message in chat_history
-    ]
-    formatted_chat_history.append(
-      ChatCompletionMessageSchema(
-        role="user",
-        content=message.text.body,
-        name=user_name
+      chat_completion, chat_history = await chat_service.handle_chat_message_pipeline(
+        message=message,
+        contact=contact,
+        metadata=metadata
       )
-    )
-
-    chat_completion: ChatCompletionResponseSchema = openai_service.create_full_chat_completion(
-      message_history=formatted_chat_history,
-      user=user,
-      options=ChatCompletionOptionsSchema()
-    )
+    except Exception as e:
+      print("Error in message pipeline", e)    
 
     chat_text_result = "The system is currently unable to generate response"
 
     if chat_completion:
-      chat_text_result = chat_completion
-      
+      chat_text_result = chat_completion.content
 
     whatsapp_response = send_whatsapp_message(
       contact.wa_id, chat_text_result)
@@ -128,6 +95,11 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
 
     updatedChat = await chat_service.upsert_chat_message(chat_criteria, chat_messages)
     updatedChats.append(updatedChat)
+
+    history_length = len([*chat_history, *chat_messages])
+
+    if history_length >= 10:
+      _ = await chat_service.create_latest_chat_summary(updatedChat.id)
 
   return updatedChats
 
