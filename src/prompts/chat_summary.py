@@ -5,7 +5,6 @@ and partner criterias. Do not add made up any additional conclusion besides the 
 Be Specific about what the user likes and dislikes.
 Summarize the conversation in ENGLISH regardless of the original language
 
-
 {format_instructions}
 
 {chat_history}

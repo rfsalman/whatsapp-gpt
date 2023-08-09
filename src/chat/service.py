@@ -24,6 +24,7 @@ from src.databases.vector import vector_db
 from src.utils.dict import flatten_dict
 from src.prompts.chat_summary import summary_parser_prompt_template
 from src.prompts.wingman import (
+  wingman_introduction_prompt,
   wingman_general_prompt,
 )
 from src.chat.schemas.summary import ChatSummarySchema
@@ -63,6 +64,9 @@ async def find_one_chat(chat_crit: dict, fields: dict = None):
     
     chat_crit = flatten_dict(chat_crit)
     chat_data = await db["chats"].find_one(chat_crit, fields)
+
+    if not chat_data:
+      return None
 
     return ChatModel(**chat_data)
   except Exception as e:
@@ -213,7 +217,7 @@ def get_chat_response(
     prompt = wingman_general_prompt
 
     if len(chat_history) == 0 and len(summaries) == 0:
-      prompt = wingman_general_prompt
+      prompt = wingman_introduction_prompt
 
     user_bio = {
       "full_name": "",
@@ -239,18 +243,36 @@ def get_chat_response(
 
 async def create_latest_chat_summary(
   chat_id: str, 
-  n_messages: int = None
 ):
   try:
+    latest_summaries = find_last_chat_summaries(chat_id=chat_id)
+
+    last_summary = None
+
+    if len(latest_summaries) > 0:
+      last_summary = latest_summaries[0]
+
+    messages_criteria = {}
+    n_messages = None
+
+    if last_summary:
+      messages_criteria={
+        "messages._id": {
+          "$gte": ObjectId(last_summary["batch_id"])
+        } 
+      }
+    else:
+      n_messages = 10
+    
     aggregated_chat = await get_chat_aggregated(
       chat_criteria={
         "_id": chat_id,
       },
-      messages_criteria={},
-      n_messages=n_messages  
+      messages_criteria=messages_criteria,
+      n_messages=n_messages
     )
 
-    generated_summary = cohere_service.generate_parsed(
+    generated_summary = openai_service.generate_parsed(
       pydantic_object=ChatSummarySchema,
       prompt_template=summary_parser_prompt_template,
       additional_data={

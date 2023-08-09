@@ -99,7 +99,7 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     history_length = len([*chat_history, *chat_messages])
 
     if history_length >= 10:
-      _ = await chat_service.create_latest_chat_summary(updatedChat.id, history_length)
+      _ = await chat_service.create_latest_chat_summary(updatedChat.id)
 
   return updatedChats
 

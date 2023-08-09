@@ -2,8 +2,13 @@ ChatSummaryModel = {
   "class": "ChatSummaries",
   "properties": [
     {
-      "name": "topic",
-      "dataType": ["text"],
+      "name": "topics",
+      "dataType": ["text[]"],
+      "moduleConfig": {
+        "text2vec-openai": {
+          "skip": True
+        }
+      }
     },
     {
       "name": "summary",
@@ -13,7 +18,7 @@ ChatSummaryModel = {
       "name": "batch_id",
       "dataType": ["text"],
       "moduleConfig": {
-        "text2vec-cohere": {
+        "text2vec-openai": {
           "skip": True
         }
       }
@@ -22,7 +27,7 @@ ChatSummaryModel = {
       "name": "chat_id",
       "dataType": ["text"],
       "moduleConfig": {
-        "text2vec-cohere": {
+        "text2vec-openai": {
           "skip": True
         }
       }
@@ -31,19 +36,19 @@ ChatSummaryModel = {
       "name": "timestamp",
       "dataType": ["date"],
       "moduleConfig": {
-        "text2vec-cohere": {
+        "text2vec-openai": {
           "skip": True
         }
       }
     }
   ],
-  "vectorizer": "text2vec-cohere",
-  "moduleConfig": {
-    "text2vec-cohere": {
-      "vectorizeClassName": False
-    },
-    "generative-openai": {
-      "model": "gpt-3.5-turbo"
-    }
+  "vectorizer": "text2vec-openai",
+    "moduleConfig": {
+      "text2vec-openai": {
+        "vectorizeClassName": False
+      },
+      "generative-openai": {
+        "model": "gpt-3.5-turbo"
+      }
   }
 }
