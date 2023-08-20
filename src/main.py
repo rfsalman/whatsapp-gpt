@@ -11,7 +11,6 @@ from src.databases.vector import vector_db
 
 @asynccontextmanager
 async def lifespan(_application: FastAPI) -> AsyncGenerator:
-  # hf.init()
   vector_db.init()
   
   yield
