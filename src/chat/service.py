@@ -15,7 +15,6 @@ import src.helpers.string_helpers as string_helpers
 import src.matchmaking.service as matchmaking_service
 from src.chat.models.summary import ChatSummaryModel
 from src.chat.schemas.summary import ChatSummarySchema
-from src.chat.schemas.chat_response import ChatResponseSchema
 from src.databases.mongo import db
 from .models import ChatModel, MessageModel
 from src.user.models import UserModel
@@ -189,6 +188,16 @@ async def handle_chat_message_pipeline(
       n_messages=10
     )
 
+    if not aggregated_chat:
+      aggregated_chat = await get_chat_aggregated(
+      chat_criteria={
+        "_id": user_chat.id,
+      },
+      messages_criteria=None,
+      n_messages=10
+    )
+
+
     # * No new messages after last summary
     if not aggregated_chat:
       aggregated_chat = user_chat
@@ -355,7 +364,7 @@ def find_last_chat_summaries(chat_id: str):
   }).with_sort({
     "path": ["timestamp"],
     "order": "desc"
-  }).with_limit(3).do()
+  }).with_limit(4).do()
 
   return summaries["data"]["Get"][ChatSummaryModel["class"]]
 

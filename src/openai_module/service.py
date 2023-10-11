@@ -34,7 +34,11 @@ async def create_full_chat_completion(
   additional_data: dict = {}
 ) -> str:
   try:
-    chat_openai = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.2)
+    chat_openai = ChatOpenAI(
+      model="gpt-3.5-turbo", 
+      temperature=0.2,
+      openai_api_key=config.OPENAI_API_KEY
+    )
 
     system_message_prompt = SystemMessagePromptTemplate.from_template(
       prompt
