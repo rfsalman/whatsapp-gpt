@@ -5,6 +5,7 @@ from typing import TypeVar, Type
 from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import (
+  BaseMessage,
   HumanMessage,
 )
 from langchain.prompts import (
@@ -20,19 +21,24 @@ from langchain.schema import (
 from pydantic import BaseModel
 
 from src.config import config
+from src.helpers.action_triggers import ActionTriggers
 from .schemas import ChatCompletionMessageSchema, ChatCompletionOptionsSchema, ChatCompletionResponseSchema
 
 openai.api_key = config.OPENAI_API_KEY
 
 T = TypeVar("T", bound=BaseModel)
 
-def create_full_chat_completion(
+async def create_full_chat_completion(
   message_history: list[AIMessage | HumanMessage],
   prompt: str,
   additional_data: dict = {}
 ) -> str:
   try:
-    chat_openai = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    chat_openai = ChatOpenAI(
+      model="gpt-3.5-turbo", 
+      temperature=0.2,
+      openai_api_key=config.OPENAI_API_KEY
+    )
 
     system_message_prompt = SystemMessagePromptTemplate.from_template(
       prompt
@@ -49,12 +55,48 @@ def create_full_chat_completion(
 
     print("System Message", chat_prompt[0].content)
 
-    chat_result = chat_openai.predict_messages(chat_prompt)
+    chat_result = await chat_openai.apredict_messages(chat_prompt)
 
     return chat_result
   except Exception as e:
     print("Error: ", e)
     return ""
+  
+async def create_parsed_chat_completion(
+  message_history: list[AIMessage | HumanMessage],
+  prompt: str,
+  pydantic_model: Type[T],
+  additional_data: dict = {}
+) -> T:
+  try:
+    chat_openai = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.2)
+    output_parser = PydanticOutputParser(
+      pydantic_object=pydantic_model
+    )
+    
+    system_message_prompt = SystemMessagePromptTemplate.from_template(
+      prompt
+    )
+
+    messages = [
+      system_message_prompt,
+      *message_history
+    ]
+
+    chat_prompt_template = ChatPromptTemplate.from_messages(messages)
+    chat_prompt = chat_prompt_template.format_messages(
+      **additional_data, 
+      format_instructions=output_parser.get_format_instructions()
+    )
+
+    chat_result = await chat_openai.apredict_messages(chat_prompt)
+
+    parsed_result = output_parser.parse(chat_result.action)
+
+    return AIMessage(content=parsed_result.summary)
+  except Exception as e:
+    print("Error at create_parsed_chat_completion", e)
+    return AIMessage(content="The system has encountered an error")
 
 def create_chat_message(message: ChatCompletionMessageSchema) -> HumanMessage | AIMessage | None:
   if message.role == "assistant":
@@ -144,6 +186,24 @@ def generate_parsed(
 
     return parsed_result
   except Exception as e:
-    print("Error at cohere_module.generate_parsed", e)
+    print("Error at openai.service.generate_parsed", e)
+    
+    raise e
+  
+async def async_predict(
+  prompt_template: str, 
+  additional_data: dict) -> T:
+  try:
+    llm = OpenAI(openai_api_key=config.OPENAI_API_KEY, temperature=0)
+
+    prompt = PromptTemplate.from_template(prompt_template)
+
+    llm_result = await llm.apredict(
+      prompt.format(**additional_data),
+    )
+
+    return llm_result
+  except Exception as e:
+    print("Error at openai.service.async_predict", e)
     
     raise e

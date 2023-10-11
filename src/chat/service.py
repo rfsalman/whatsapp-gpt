@@ -1,4 +1,5 @@
 
+import asyncio
 from datetime import datetime
 from typing import Tuple
 from bson import ObjectId
@@ -10,8 +11,10 @@ from langchain.schema import (
 
 import src.user.service as user_service
 import src.openai_module.service as openai_service
-import src.cohere_module.service as cohere_service
+import src.helpers.string_helpers as string_helpers
+import src.matchmaking.service as matchmaking_service
 from src.chat.models.summary import ChatSummaryModel
+from src.chat.schemas.summary import ChatSummarySchema
 from src.databases.mongo import db
 from .models import ChatModel, MessageModel
 from src.user.models import UserModel
@@ -22,12 +25,13 @@ from src.whatsapp_webhook.schemas.webhook_payload_schema import (
 )
 from src.databases.vector import vector_db
 from src.utils.dict import flatten_dict
+from src.helpers.action_triggers import ActionTriggers
 from src.prompts.chat_summary import summary_parser_prompt_template
 from src.prompts.wingman import (
   wingman_introduction_prompt,
   wingman_general_prompt,
+  wingman_match_recommendation_prompt
 )
-from src.chat.schemas.summary import ChatSummarySchema
 
 async def get_or_create_chat(chat_criteria: dict) -> ChatModel:
   try:
@@ -184,6 +188,16 @@ async def handle_chat_message_pipeline(
       n_messages=10
     )
 
+    if not aggregated_chat:
+      aggregated_chat = await get_chat_aggregated(
+      chat_criteria={
+        "_id": user_chat.id,
+      },
+      messages_criteria=None,
+      n_messages=10
+    )
+
+
     # * No new messages after last summary
     if not aggregated_chat:
       aggregated_chat = user_chat
@@ -193,7 +207,7 @@ async def handle_chat_message_pipeline(
     new_message = HumanMessage(content=message.text.body)
     
     # * Intent classification
-    chat_completion: AIMessage = get_chat_response(
+    chat_completion: AIMessage = await get_chat_response(
       chat_history=chat_history,
       new_message=new_message,
       user=user,
@@ -207,7 +221,7 @@ async def handle_chat_message_pipeline(
     
     raise e
   
-def get_chat_response(
+async def get_chat_response(
   chat_history: list[AIMessage | HumanMessage],
   new_message: AIMessage | HumanMessage, 
   user: UserModel,
@@ -219,23 +233,66 @@ def get_chat_response(
     if len(chat_history) == 0 and len(summaries) == 0:
       prompt = wingman_introduction_prompt
 
+    match_bio = {
+      "match_full_name": "",
+      "match_date_of_birth": "",
+      "match_gender": "",
+    }
+    
     user_bio = {
       "full_name": "",
       "date_of_birth": "",
       "gender": "",
     }
 
+    match_summaries = []
+
     if user.bio_information:
       user_bio = user.bio_information.dict()
-    
-    chat_completion: AIMessage = openai_service.create_full_chat_completion(
+
+    if user.user_match_id:
+      prompt = wingman_match_recommendation_prompt
+      
+      matched_user = await user_service.get_or_create_user({
+        "_id": user.user_match_id
+      })
+
+      matched_user_chat = await get_or_create_chat({
+        "user": {
+          "whatsapp_id": matched_user.whatsapp_id
+        }
+      })
+
+      match_bio_dict = matched_user.bio_information.dict() if matched_user.bio_information else None
+
+      if match_bio_dict:
+        match_bio = {
+          "match_full_name": match_bio_dict["full_name"],
+          "match_date_of_birth": match_bio_dict["date_of_birth"],
+          "match_gender": match_bio_dict["gender"],
+        }
+
+      match_summaries = find_last_chat_summaries(str(matched_user_chat.id))
+
+    chat_completion: AIMessage = await openai_service.create_full_chat_completion(
       message_history=[*chat_history, new_message],
       prompt=prompt,
       additional_data={
         **user_bio, 
-        "chat_context": stringify_chat_summaries(summaries) if len(summaries) > 0 else ""
+        **match_bio,
+        "chat_context": stringify_chat_summaries(summaries) if len(summaries) > 0 else "",
+        "match_chat_context": stringify_chat_summaries(match_summaries) if len(match_summaries) > 0 else ""
       }
     )
+
+    action, new_message_content = string_helpers.get_string_and_remove_enum_flags(chat_completion.content, ActionTriggers)
+
+    if len(action) > 0:
+      if action[0] == ActionTriggers.MATCHMAKING_START:
+        asyncio.create_task(matchmaking_service.start_matchmaking(user_id=user.id))
+
+    chat_completion.content = new_message_content
+
   except Exception as e:
     print("Error at get chat response", e)
   
@@ -307,7 +364,7 @@ def find_last_chat_summaries(chat_id: str):
   }).with_sort({
     "path": ["timestamp"],
     "order": "desc"
-  }).with_limit(3).do()
+  }).with_limit(4).do()
 
   return summaries["data"]["Get"][ChatSummaryModel["class"]]
 

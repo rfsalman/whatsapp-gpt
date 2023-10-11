@@ -9,13 +9,13 @@ class UserBioModel(BaseModel):
   interests: list[str] = Field(default=[], description="List of user's interest, can be deducted from chat topics")
   relationship_goal: str = Field(default=None, description="Could be one of: casual, short-term, long-term")
   
-
 class UserModel(BaseModel):
-  _id: PyObjectId = Field(default_factory=PyObjectId)
+  id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
   phone_number: str = Field(default="")
   whatsapp_id: str = Field(default="")
   name: str = Field(default="")
   bio_information: UserBioModel = Field(default=None)
+  user_match_id: PyObjectId = Field(default=None, default_factory=None)
 
   class Config:
     allow_population_by_field_name = True
