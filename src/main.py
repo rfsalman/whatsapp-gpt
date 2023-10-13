@@ -26,7 +26,7 @@ app.add_middleware(
 async def healthcheck():
   return {"status": "ok"}
 
-app.include_router(wa_webhook_router, prefix="/webhooks/whatsapp", tags=["whatsapp-webhook"])
+app.include_router(wa_webhook_router, prefix="/whatsapp", tags=["whatsapp-webhook"])
 
 @app.get("/")
 def read_root():
