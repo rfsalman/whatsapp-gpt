@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from src.helpers.topics import MessageTopics
+from src.helpers.chat_summary_topics import ChatSummaryTopics
 
 class ChatSummarySchema(BaseModel):
   topics: list = Field(
@@ -8,8 +8,7 @@ class ChatSummarySchema(BaseModel):
     description=f"""The topics of the conversation,
       choose at most three topics and only the most relevant ones and,
       leave empty if there is no matching topic: 
-      values-life-goals, love-language, user-personality, partner-personality, partner-criteria,
-      {", ".join(map(lambda c: c.value, MessageTopics))}
+      {", ".join(map(lambda c: c.value, ChatSummaryTopics))}
     """,
   )
   summary: str = Field(

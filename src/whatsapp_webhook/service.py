@@ -10,8 +10,9 @@ from langchain.schema import (
 import src.chat.service as chat_service
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
+from src.chat.models.wingman_chat import WingmanChatsModel
 from src.config import config
-from src.chat.models import ChatModel, MessageModel
+from src.chat.models.wingman_chat import WingmanChatsModel, MessageModel
 
 
 async def handle_whatsapp_event(data: WaWebhookPayload):
@@ -29,16 +30,14 @@ async def handle_whatsapp_event(data: WaWebhookPayload):
 
   return logs
 
-async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
+async def handle_new_messages(change: WaPayloadEntryChanges) -> list[WingmanChatsModel]:
   if len(change.value.contacts) == 0:
     return None
 
   if len(change.value.messages) == 0:
     return None
 
-  metadata = change.value.metadata
-
-  updatedChats = []
+  updated_chats = []
 
   for _, (message, contact) in enumerate(zip_longest(change.value.messages, change.value.contacts)):
     # ? Uneven lengths of message/contact
@@ -49,14 +48,14 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     if message.message_type != "text":
       continue
 
+    wingman_chat: WingmanChatsModel = None
     chat_completion: AIMessage = None
     chat_history: list[BaseMessage] = []
 
     try:
-      chat_completion, chat_history = await chat_service.handle_chat_message_pipeline(
+      wingman_chat, chat_completion, chat_history = await chat_service.handle_chat_message_pipeline(
         message=message,
         contact=contact,
-        metadata=metadata
       )
     except Exception as e:
       print("Error in message pipeline", e)    
@@ -72,20 +71,20 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
     # TODO: Implement error handling if call to whatsapp failed
     if len(whatsapp_response.messages) == 0:
       continue
-
-    chat_criteria = {
-      "system_profile.whatsapp_id": metadata.phone_number_id,
-      "user.whatsapp_id": contact.wa_id
-    }
+    
+    if not wingman_chat:
+      continue
 
     chat_messages = [
       MessageModel(
+        type="text",
         role="user",
         content=message.text.body,
         wa_message_id=message.id,
         created_at=message.timestamp,
       ),
       MessageModel(
+        type="text",
         role="assistant",
         content=chat_text_result,
         wa_message_id=whatsapp_response.messages[0].id,
@@ -93,15 +92,15 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> ChatModel:
       ),
     ]
 
-    updatedChat = await chat_service.upsert_chat_message(chat_criteria, chat_messages)
-    updatedChats.append(updatedChat)
+    updated_chat = await chat_service.upsert_chat_message({"_id": wingman_chat.id}, chat_messages)
+    updated_chats.append(updated_chat)
 
     history_length = len([*chat_history, *chat_messages])
 
     if history_length >= 10:
-      _ = await chat_service.create_latest_chat_summary(str(updatedChat.id))
+      _ = await chat_service.create_latest_chat_summary(wingman_chat_id=str(updated_chat.id))
 
-  return updatedChats
+  return updated_chats
 
 def send_whatsapp_message(to: str, content: str) -> WaMessageResponseSchema:
   url = "{}/messages".format(config.FACEBOOK_API_URL)
