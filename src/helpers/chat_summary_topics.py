@@ -1,6 +1,9 @@
 from enum import Enum
 
-class MessageTopics(Enum):
+class ChatSummaryTopics(Enum):
+  LIFE_GOALS_VALUES = "life-goals-and-values"
+  USER_PERSONALITY_AND_TRAITS = "user-personality-and-traits"
+  PARTNER_CRITERIA = "partner-criteria"
   HOBBIES_MOVIES = "hobbies-movies"
   HOBBIES_EXERCISE = "hobbies-exercise"
   HOBBIES_ART = "hobbies-art"
@@ -16,4 +19,6 @@ class MessageTopics(Enum):
   HOBBIES_DANCE = "hobbies-dance"
   HOBBIES_GAMING = "hobbies-gaming"
   HOBBIES_COOKING = "hobbies-cooking"
-  HOBBIES_GARDENING = "hobbies-yoga"
+  HOBBIES_FOODS = "hobbies-food"
+  HOBBIES_GARDENING = "hobbies-gardening"
+  HOBBIES_YOGA = "hobbies-yoga"

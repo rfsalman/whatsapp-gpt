@@ -1,12 +1,9 @@
 from src.models import PyObjectId
-from src.user.models import UserModel
+from src.user.models.user import UserModel
 from src.databases.mongo import db
 from src.utils.dict import flatten_dict
 
 async def get_user(criteria: dict) -> UserModel | None:
-  if "_id" in criteria:
-    criteria["_id"] = PyObjectId(criteria["_id"])
-
   user = await db["users"].find_one(criteria)
 
   if not user:
@@ -18,7 +15,7 @@ async def get_user(criteria: dict) -> UserModel | None:
 async def create_user(user_dto: dict) -> UserModel:
   userData = user_dto
 
-  created = await db["users"].insert_one(userData)
+  created = await db["users"].insert_one(UserModel(**userData).dict(by_alias=True))
 
   newUser = await db["users"].find_one({"_id": created.inserted_id})
 
@@ -44,13 +41,13 @@ async def find_all_user(criteria: dict = {}, pagination: dict = {}) -> list[User
 
   return users
 
-async def update_one_user(criteria: dict = {}, update_dto: dict = {}) -> UserModel | None:
+async def update_one_user(criteria: dict = {}, update_dto: dict = {}, operator = "$set") -> UserModel | None:
   user = await get_user(flatten_dict(criteria=criteria))
 
   if not user:
     return None
   
-  _ = await db["users"].update_one(criteria, {"$set": update_dto})
+  _ = await db["users"].update_one(criteria, {operator: update_dto})
 
   user = await get_user(flatten_dict(criteria=criteria))
 
