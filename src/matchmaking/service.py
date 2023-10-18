@@ -36,6 +36,10 @@ async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str):
     await func_utils.async_wrapper(
       requests.post,
       url=f"{config.WINGMAN_BACKEND_API_URL}/jobs/wingman-chats-export",
+      headers={
+        "client-id": config.SERVICE_USER_ID,
+        "client-secret": config.SERVICE_USER_SECRET
+      },
       json= {
         "wingman_chat_id": str(wingman_chat.id),
         "target": "discord"
