@@ -1,5 +1,6 @@
 
 import asyncio
+import requests
 from datetime import datetime
 from bson import ObjectId
 from langchain.schema import (
@@ -25,6 +26,7 @@ from src.whatsapp_webhook.schemas.webhook_payload_schema import (
 )
 from src.databases.vector import vector_db
 from src.utils.dict import flatten_dict
+from src.utils.func_utils import async_wrapper
 from src.helpers.action_triggers import ActionTriggers
 from src.prompts.chat_summary import summary_parser_prompt_template
 from src.prompts.wingman import (
@@ -241,10 +243,15 @@ async def get_chat_response(
     )
 
     actions, new_message_content = string_helpers.get_string_and_remove_enum_flags(chat_completion.content, ActionTriggers)
-
+    
     if len(actions) > 0:
-      if actions[0] == ActionTriggers.MATCHMAKING_START:
-        asyncio.create_task(matchmaking_service.start_matchmaking(user_id=user.id))
+      asyncio.create_task(
+        handle_action_triggers(
+          action=actions[0],
+          user_id=str(user.id),
+          wingman_assistant_id=str(wingman_assistant.id)
+        )
+      )
 
     chat_completion.content = new_message_content
 
@@ -252,6 +259,33 @@ async def get_chat_response(
     print("Error at get chat response", e)
   
   return chat_completion
+
+ActionHandlerReturnType = tuple[MessageModel | None, Exception | BaseException | None]
+
+async def handle_action_triggers(action: ActionTriggers, user_id: str, wingman_assistant_id: str) -> tuple[ActionTriggers, bool, Exception | BaseException | None]:
+  try:
+    action_results: ActionHandlerReturnType = None 
+    
+    # * Initiate matchmaking logic here
+    if action == ActionTriggers.MATCHMAKING_START:
+      action_results = await matchmaking_service.handle_matchmaking_start(
+        user_id=user_id,
+        wingman_assistant_id=wingman_assistant_id
+      )
+      
+    _, errors = action_results
+
+    if errors:
+      return (action, action_results)
+
+    return (action, action_results)
+  except BaseException as e:
+    return (action, False, e)
+  
+  except Exception as e:
+    print("ERROR AT handle_action_triggers", e)
+    
+    return (action, False, BaseException(detail={"handle_action_triggers": [e]}))
 
 async def create_latest_chat_summary(
   wingman_chat_id: str, 
