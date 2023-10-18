@@ -16,6 +16,9 @@ class Config(BaseSettings):
   WEAVIATE_URL: str
   WEAVIATE_API_KEY: str
   COHERE_API_KEY: str
+  SERVICE_NAME: str
+  SERVICE_USER_ID: str
+  SERVICE_USER_SECRET: str
   
   class Config:
     env_file = "./src/.env"
