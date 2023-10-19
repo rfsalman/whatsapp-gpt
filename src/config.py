@@ -19,6 +19,9 @@ class Config(BaseSettings):
   SERVICE_NAME: str
   SERVICE_USER_ID: str
   SERVICE_USER_SECRET: str
+  WA_TEMPLATE_USER_ACTIVATION: str
+  WA_TEMPLATE_ACTIVATION_REMINDER: str
+  WA_TEMPLATE_USER_VERIFICATION: str
   
   class Config:
     env_file = "./src/.env"

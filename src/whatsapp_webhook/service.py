@@ -1,6 +1,9 @@
 import asyncio
-from itertools import zip_longest
 import requests
+import aiohttp
+from fastapi import HTTPException, status
+from bson import ObjectId
+from itertools import zip_longest
 from datetime import datetime
 from langchain.schema import (
   AIMessage,
@@ -8,11 +11,18 @@ from langchain.schema import (
 )
 
 import src.chat.service as chat_service
+import src.user.service as user_service
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
 from src.chat.models.wingman_chat import WingmanChatsModel
 from src.config import config
-from src.chat.models.wingman_chat import WingmanChatsModel, MessageModel
+from src.chat.models.wingman_chat import WingmanChatsModel, MessageModel, WhatsappMessageMetadata
+from src.whatsapp_webhook.schemas.activation_message import UserActivationMessageDto
+from src.exceptions import (
+  BaseException,
+  InternalServerError, 
+  NotFoundError
+)
 
 
 async def handle_whatsapp_event(data: WaWebhookPayload):
@@ -80,15 +90,19 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> list[WingmanChat
         type="text",
         role="user",
         content=message.text.body,
-        wa_message_id=message.id,
         created_at=message.timestamp,
+        whatsapp_message_metadata=WhatsappMessageMetadata(
+          wa_message_id=message.id,
+        )
       ),
       MessageModel(
         type="text",
         role="assistant",
         content=chat_text_result,
-        wa_message_id=whatsapp_response.messages[0].id,
         created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        whatsapp_message_metadata=WhatsappMessageMetadata(
+          wa_message_id=whatsapp_response.messages[0].id,
+        )
       ),
     ]
 
@@ -124,3 +138,139 @@ def send_whatsapp_message(to: str, content: str) -> WaMessageResponseSchema:
   responseBody = response.json()
 
   return WaMessageResponseSchema(**responseBody)
+
+async def send_whatsapp_user_activation_message(dto: UserActivationMessageDto) -> WaMessageResponseSchema:
+  try:
+    user = await user_service.get_user({
+      "_id": ObjectId(dto.user_id)
+    })
+
+    if not user:
+      raise NotFoundError(
+        detail={
+          "user._id": [f"Can't find user with id {dto.user_id}"]
+        }
+      )
+
+    if not user.phone_number:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "user.phone_number": [f"User has not registered their phone number"]
+        }
+      )
+    
+    if user.verified:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "user.verified": [f"User already verified"]
+        }
+      )  
+
+
+    wingman_chat = await chat_service.get_or_create_chat(
+      {
+        "user_id": user.id,
+        "wingman_assistant_id": user.selected_wingman_id
+      }
+    )
+
+    if not wingman_chat:
+      raise NotFoundError(
+        detail={
+          "wingman_chat._id": [f"Can't find wingman_chat for this user"]
+        }
+      )
+    
+    whatsapp_messaging_url = f"{config.FACEBOOK_API_URL}/messages"
+    headers = {
+      "Authorization": f"Bearer {config.WHATSAPP_ACCESS_TOKEN}",
+      "Content-Type": "application/json"
+    }
+
+    message_body_parameters = []    
+
+    if dto.message_template != config.WA_TEMPLATE_USER_VERIFICATION:
+      message_body_parameters.append(
+        {
+          "type": "text",
+          "text": user.bio.full_name if user.bio and user.bio.full_name else "Wingman User"
+        }
+      )
+
+    payload = {
+      "messaging_product": "whatsapp",
+      "recipient_type": "individual",
+      "to": user.phone_number,
+      "type": "template",
+      "template": {
+        "name": dto.message_template,
+        "language": {
+          "code": "en"
+        },
+        "components": [
+          {
+            "type": "body",
+            "parameters": message_body_parameters
+          },
+          {
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [
+              {
+                "type": "text",
+                "text": f"?{dto.activation_link_query_string}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
+      async with session.post(
+        url=whatsapp_messaging_url,
+        json=payload  
+      ) as response:
+        json_res = await response.json()
+        response_data = WaMessageResponseSchema(**json_res)
+
+    if response_data and len(response_data.messages) > 0:
+      _ = await chat_service.upsert_chat_message(
+        chat_data={
+          "_id": wingman_chat.id
+        },
+        messages=[
+          MessageModel(
+            type="user-activation-link",
+            role="assistant",
+            content="",
+            whatsapp_message_metadata=WhatsappMessageMetadata(
+              wa_message_id=response_data.messages[0].id
+            ) 
+          )
+        ]
+      )
+
+    return response_data
+
+  except BaseException as e:
+    print("BASE EXCEPTION", e)
+    
+    raise e
+
+  except HTTPException as e:
+    raise e
+
+  except Exception as e:
+    print("EXCEPTION", e)
+    
+    raise InternalServerError(
+      detail={
+        "system": [str(e)]
+      }
+    )
+  
+

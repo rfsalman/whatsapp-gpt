@@ -126,7 +126,9 @@ async def upsert_chat_message(chat_data: dict, messages: list[MessageModel]) -> 
           "content": message.content,
           "role": message.role,
           "created_at": message.created_at,
-          "whatsapp_message_metadata": message.whatsapp_message_metadata.dict(by_alias=True)
+          "whatsapp_message_metadata": 
+            message.whatsapp_message_metadata.dict(by_alias=True) 
+            if message.whatsapp_message_metadata else None
         } for message in messages]
       }
     }
