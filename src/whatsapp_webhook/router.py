@@ -1,10 +1,19 @@
 
 from typing import Annotated
-from fastapi import APIRouter, Body, HTTPException, Header, Query, status
-from src.config import config
-from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload
-from src.whatsapp_webhook.dependencies import validate_whatsapp_webhook_payload
+from fastapi import APIRouter, Body, Depends, HTTPException, Header, Query, status
+
 import src.whatsapp_webhook.service as whatsapp_service
+from src.schemas.api_response import ApiResponse
+from src.config import config
+from src.service_users.dependencies.authorization import authorize_service_user
+from src.service_users.models.service_user import ServiceUserModel
+from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
+from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload
+from src.whatsapp_webhook.schemas.activation_message import UserActivationMessageDto
+from src.exceptions import (
+  BaseException,
+  NotFoundError,
+)
 
 router = APIRouter(tags=["whatsapp-webhook"])
 
@@ -27,3 +36,45 @@ async def handle_whatsapp_event(payload: Annotated[dict, Body()], x_hub_signatur
   _ = await whatsapp_service.handle_whatsapp_event(WaWebhookPayload(**payload))
 
   return "OK"
+
+@router.post("/activation-message")
+async def handle_send_activation_message(
+  _: Annotated[ServiceUserModel, Depends(authorize_service_user)],
+  activation_message_dto: UserActivationMessageDto 
+):
+  try:
+    data = await whatsapp_service.send_whatsapp_user_activation_message(
+      activation_message_dto
+    )
+
+    return ApiResponse[WaMessageResponseSchema](
+      status="success",
+      code=status.HTTP_200_OK,
+      data=data,
+      message="Message sent successfully"
+    )
+  
+  except NotFoundError as e:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail=e.detail
+    )
+  
+  except BaseException as e:
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail=e.detail
+    )
+  
+  except HTTPException as e:
+    raise e
+  
+  except Exception as e:
+    print("Exception", e)
+    
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail={
+        "system": [str(e)]
+      }
+    )
