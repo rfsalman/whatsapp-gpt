@@ -7,6 +7,7 @@ import src.chat.service as chat_service
 import src.user.service as user_service
 import src.utils.func_utils as func_utils
 from src.config import config
+from src.exceptions import BaseException
 
 async def start_matchmaking(user_id: str):
   try:
@@ -21,7 +22,7 @@ async def start_matchmaking(user_id: str):
   
 ActionHandlerReturnType = tuple[MessageModel | None, Exception | BaseException | None]
 
-async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str):
+async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str) -> ActionHandlerReturnType:
   """
   Action Handler to initiate Matchmaking
   Returns the status of the action handler (AI Message or null), and an exception, if any
@@ -45,9 +46,6 @@ async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str):
         "target": "discord"
       }
     )
-    
-    # * Initiate matchmaking
-    await start_matchmaking(user_id)
 
     return None, None
   except BaseException as e:

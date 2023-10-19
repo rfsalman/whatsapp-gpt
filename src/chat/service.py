@@ -1,6 +1,5 @@
 
 import asyncio
-import requests
 from datetime import datetime
 from bson import ObjectId
 from langchain.schema import (
@@ -33,6 +32,7 @@ from src.prompts.wingman import (
   wingman_introduction_prompt,
   wingman_general_prompt,
 )
+from src.exceptions import BaseException
 
 async def get_or_create_chat(chat_criteria: dict) -> WingmanChatsModel:
   try:
@@ -276,7 +276,7 @@ async def handle_action_triggers(action: ActionTriggers, user_id: str, wingman_a
     _, errors = action_results
 
     if errors:
-      return (action, action_results)
+      return (action, False, errors)
 
     return (action, action_results)
   except BaseException as e:
