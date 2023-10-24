@@ -1,6 +1,5 @@
 import asyncio
 import requests
-import aiohttp
 from fastapi import HTTPException, status
 from bson import ObjectId
 from itertools import zip_longest
@@ -12,6 +11,7 @@ from langchain.schema import (
 
 import src.chat.service as chat_service
 import src.user.service as user_service
+from src.whatsapp_api_client import WhatsappAPIClient
 from src.whatsapp_webhook.schemas.webhook_payload_schema import WaWebhookPayload, WaPayloadEntryChanges
 from src.whatsapp_webhook.schemas.api_schema import WaMessageResponseSchema
 from src.chat.models.wingman_chat import WingmanChatsModel
@@ -70,6 +70,7 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> list[WingmanChat
     except Exception as e:
       print("Error in message pipeline", e)    
 
+    # TODO: Use new template messages for waiting, error, etc
     chat_text_result = "The system is currently unable to generate response"
 
     if chat_completion:
@@ -78,11 +79,12 @@ async def handle_new_messages(change: WaPayloadEntryChanges) -> list[WingmanChat
     whatsapp_response = send_whatsapp_message(
       contact.wa_id, chat_text_result)
 
+    # ? Skip insert new messages not AI generated 
+    if not wingman_chat or not chat_completion:
+      continue
+
     # TODO: Implement error handling if call to whatsapp failed
     if len(whatsapp_response.messages) == 0:
-      continue
-    
-    if not wingman_chat:
       continue
 
     chat_messages = [
@@ -141,6 +143,8 @@ def send_whatsapp_message(to: str, content: str) -> WaMessageResponseSchema:
 
 async def send_whatsapp_user_activation_message(dto: UserActivationMessageDto) -> WaMessageResponseSchema:
   try:
+    session = WhatsappAPIClient.get_session()
+    
     user = await user_service.get_user({
       "_id": ObjectId(dto.user_id)
     })
@@ -168,7 +172,6 @@ async def send_whatsapp_user_activation_message(dto: UserActivationMessageDto) -
         }
       )  
 
-
     wingman_chat = await chat_service.get_or_create_chat(
       {
         "user_id": user.id,
@@ -184,10 +187,6 @@ async def send_whatsapp_user_activation_message(dto: UserActivationMessageDto) -
       )
     
     whatsapp_messaging_url = f"{config.FACEBOOK_API_URL}/messages"
-    headers = {
-      "Authorization": f"Bearer {config.WHATSAPP_ACCESS_TOKEN}",
-      "Content-Type": "application/json"
-    }
 
     message_body_parameters = []    
 
@@ -228,14 +227,13 @@ async def send_whatsapp_user_activation_message(dto: UserActivationMessageDto) -
         ]
       }
     }
-    
-    async with aiohttp.ClientSession(headers=headers) as session:
-      async with session.post(
-        url=whatsapp_messaging_url,
-        json=payload  
-      ) as response:
-        json_res = await response.json()
-        response_data = WaMessageResponseSchema(**json_res)
+
+    async with session.post(
+      url=whatsapp_messaging_url,
+      json=payload  
+    ) as response:
+      json_res = await response.json()
+      response_data = WaMessageResponseSchema(**json_res)
 
     if response_data and len(response_data.messages) > 0:
       _ = await chat_service.upsert_chat_message(
