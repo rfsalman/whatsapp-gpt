@@ -5,17 +5,26 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from src.wingman_api_client import WingmanAPIClient
+from src.whatsapp_api_client import WhatsappAPIClient
 from src.config import config
 from src.databases.vector import vector_db
 from src.whatsapp_webhook.router import router as wa_webhook_router
-from src.service_users.router import service_user_router
 
 @asynccontextmanager
 async def lifespan(_application: FastAPI) -> AsyncGenerator:
-  # hf.init()
+  WingmanAPIClient.init_session()
+  WhatsappAPIClient.init_session()
+  
   vector_db.init()
   
   yield
+
+  wingman_session = WingmanAPIClient.get_session()
+  whatsapp_session = WhatsappAPIClient.get_session()
+
+  wingman_session.close()
+  whatsapp_session.close()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -28,7 +37,6 @@ async def healthcheck():
   return {"status": "ok"}
 
 app.include_router(wa_webhook_router, prefix="/whatsapp", tags=["whatsapp-webhook"])
-app.include_router(service_user_router, prefix="/service-users", tags=["service-users"])
 
 @app.get("/")
 def read_root():

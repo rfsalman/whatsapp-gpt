@@ -3,6 +3,8 @@ from bson import ObjectId
 from pydantic import BaseModel, Field
 from pydantic.generics import GenericModel
 
+from src.schemas.pagination import PaginationData
+
 M = TypeVar("M", bound=BaseModel)
 
 class ApiResponse(GenericModel, Generic[M]):
@@ -10,6 +12,7 @@ class ApiResponse(GenericModel, Generic[M]):
   status: str = Field(default="success")
   data: M = Field(default=None)
   message: str = Field(default=None)
+  pagination: PaginationData = Field(default=None)
 
   class Config:
     allow_population_by_field_name = True
