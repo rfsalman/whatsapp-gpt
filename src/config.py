@@ -19,6 +19,7 @@ class Config(BaseSettings):
   SERVICE_NAME: str
   SERVICE_USER_ID: str
   SERVICE_USER_SECRET: str
+  WINGMAN_BACKEND_API_URL: str
   
   class Config:
     env_file = "./src/.env"
