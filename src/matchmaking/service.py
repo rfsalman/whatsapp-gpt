@@ -20,12 +20,12 @@ async def start_matchmaking(user_id: str):
     print("Error at start_matchmaking", e)
     raise e
   
-ActionHandlerReturnType = tuple[MessageModel | None, Exception | BaseException | None]
+ActionHandlerReturnType = tuple[bool, Exception | BaseException | None]
 
 async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str) -> ActionHandlerReturnType:
   """
   Action Handler to initiate Matchmaking
-  Returns the status of the action handler (AI Message or null), and an exception, if any
+  Returns the boolean status of the action handler (True or False), and an exception, if any
   """
   try:
     wingman_chat = await chat_service.find_one_chat({
@@ -47,7 +47,7 @@ async def handle_matchmaking_start(user_id: str, wingman_assistant_id: str) -> A
       }
     )
 
-    return None, None
+    return True, None
   except BaseException as e:
     print("ERROR at handle_matchmaking_start", e)
     return False, BaseException(detail={"handle_matchmaking_start": [e]})
