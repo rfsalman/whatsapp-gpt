@@ -13,10 +13,15 @@ import src.wingman.service as wingman_service
 import src.openai_module.service as openai_service
 import src.helpers.string_helpers as string_helpers
 import src.matchmaking.service as matchmaking_service
+import src.whatsapp_webhook.service as whatsapp_service
+from src.config import config
+from src.whatsapp_webhook.schemas.activation_message import UserActivationMessageDto
 from src.chat.models.summary import ChatSummaryModel
 from src.chat.schemas.summary import ChatSummarySchema
 from src.databases.mongo import db
 from src.wingman.models.wingman import WingmanAssistantModel
+from src.matchmaking.schemas.find_many_histories_dto import FindManyHistoriesDto
+from src.user.schemas.create_user_verification_token import CreateUserVerificationTokenDto
 from .models.wingman_chat import WingmanChatsModel, MessageModel
 from src.user.models.user import UserModel
 from src.whatsapp_webhook.schemas.webhook_payload_schema import (
@@ -174,6 +179,35 @@ async def handle_chat_message_pipeline(
       }
     )
 
+    # * Check User Matchmaking History
+    matchmaking_histories = await matchmaking_service.find_many_matchmaking_histories(
+      find_dto=FindManyHistoriesDto(
+        page_number=1,
+        page_size=1,
+        sort_field="created_at",
+        sort_order="DESC",
+        user_id=str(user.id)
+      )
+    )
+
+    # * Send Activation Message template if you user has reached matchmaking
+    if len(matchmaking_histories) > 0:
+      verification_token_res = await user_service.create_user_verification_token(
+       str(user.id)
+      )
+      
+      _ = await whatsapp_service.send_whatsapp_user_activation_message(
+        UserActivationMessageDto(
+          activation_link_query_string=f"verification_request_token={verification_token_res.verification_request_token}&source={user.source}",
+          message_template=config.WA_TEMPLATE_USER_ACTIVATION,
+          user_id=str(user.id),
+        )
+      )
+
+      # TODO implement "waiiting" template message
+      
+      return (user_chat, None, [])
+
     summaries = find_last_chat_summaries({
       "path": "user_id",
       "operator": "Equal",
@@ -192,8 +226,9 @@ async def handle_chat_message_pipeline(
       },
       messages_criteria={
         "messages._id": {
-          "$gte": ObjectId(last_summary["last_message_id"])
-        } 
+          "$gte": ObjectId(last_summary["last_message_id"]),
+        },
+        "messages.type": "text"
       } if last_summary else {},
       n_messages=10
     )
@@ -318,14 +353,15 @@ async def create_latest_chat_summary(
     if len(latest_summaries) > 0:
       last_summary = latest_summaries[0]
 
-    messages_criteria = {}
+    messages_criteria = {
+      "messages.type": "text"
+    }
+
     n_messages = None
 
     if last_summary:
-      messages_criteria={
-        "messages._id": {
-          "$gte": ObjectId(last_summary["last_message_id"])
-        } 
+      messages_criteria["messages._id"] = {
+        "$gte": ObjectId(last_summary["last_message_id"])
       }
     else:
       n_messages = 10
