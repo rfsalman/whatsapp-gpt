@@ -1,6 +1,6 @@
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 from langchain.schema import (
   AIMessage,
@@ -40,12 +40,13 @@ async def get_or_create_chat(chat_criteria: dict) -> WingmanChatsModel:
 
     if not chat:
       # ? Get random wingman asisstant's id
-      wingman_assistant = chat_criteria["wingman_assistant_id"] if "wingman_assistant_id" in chat_criteria else None
+      wingman_assistant_id = chat_criteria["wingman_assistant_id"] if "wingman_assistant_id" in chat_criteria else None
 
-      if not wingman_assistant:
+      if not wingman_assistant_id:
         wingman_assistant = await wingman_service.find_one_wingman({})
+        wingman_assistant_id = wingman_assistant.id
 
-      chat_criteria["wingman_assistant_id"] = wingman_assistant.id
+      chat_criteria["wingman_assistant_id"] = wingman_assistant_id
       
       chat = await create_chat(WingmanChatsModel(**chat_criteria))
       
@@ -118,21 +119,31 @@ async def get_chat_aggregated(
     raise e
 
 async def upsert_chat_message(chat_data: dict, messages: list[MessageModel]) -> WingmanChatsModel | None:
+  update = {
+    "$push": {
+      "messages": {
+        "$each": [{
+          "_id": message.id,
+          "type": message.type,
+          "content": message.content,
+          "role": message.role,
+          "created_at": message.created_at,
+          "whatsapp_message_metadata": 
+            message.whatsapp_message_metadata.dict(by_alias=True) 
+            if message.whatsapp_message_metadata else None
+        } for message in messages]
+      }
+    }
+  }
+
+  if len(messages) > 0:
+    update["$set"] = {
+      "last_message_at": datetime.strptime(messages[-1].created_at, "%Y-%m-%d %H:%M:%S")
+    }
+  
   _ = await db["wingman_chats"].update_one(
     chat_data,
-    {
-      "$push": {
-        "messages": {
-          "$each": [{
-            "_id": message.id,
-            "type": message.type,
-            "content": message.content,
-            "role": message.role,
-            "created_at": message.created_at,
-          } for message in messages]
-        }
-      }
-    },
+    update,
     upsert=True
   )
 
@@ -156,7 +167,12 @@ async def handle_chat_message_pipeline(
     )
 
     # * Get/Create chat
-    user_chat = await get_or_create_chat({"user_id": user.id})
+    user_chat = await get_or_create_chat(
+      {
+        "user_id": user.id,
+        "wingman_assistant_id": user.selected_wingman_id
+      }
+    )
 
     summaries = find_last_chat_summaries({
       "path": "user_id",

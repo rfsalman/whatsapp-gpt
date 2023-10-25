@@ -1,4 +1,5 @@
-from src.models import PyObjectId
+
+import src.wingman.service as wingman_service
 from src.user.models.user import UserModel
 from src.databases.mongo import db
 from src.utils.dict import flatten_dict
@@ -14,6 +15,11 @@ async def get_user(criteria: dict) -> UserModel | None:
 
 async def create_user(user_dto: dict) -> UserModel:
   userData = user_dto
+
+  selected_wingman = await wingman_service.find_one_wingman({})
+
+  if selected_wingman:
+    userData["selected_wingman_id"] = selected_wingman.id
 
   created = await db["users"].insert_one(UserModel(**userData).dict(by_alias=True))
 

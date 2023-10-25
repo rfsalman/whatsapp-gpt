@@ -25,6 +25,7 @@ class UserModel(BaseModel):
   phone_number: str = Field(default=None)
   password: str = Field(default=None)
   bio: UserBioModel = Field(default=None)
+  source: str = Field(default="whatsapp")
   verified: bool = Field(default=False)
   verification_request_id: PyObjectId = Field(default=None)
   change_password_request_id: PyObjectId = Field(default=None)
